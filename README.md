@@ -194,6 +194,35 @@ Only if you *don’t* use `--copy-instead`. For safety, run with `--copy-instead
 
 ---
 
+## Support & Maintenance
+
+This project is **not actively maintained**. It’s provided **as is** as a starting point for experiments, and we **do not guarantee** it will work on your setup.
+
+- No SLA or official support
+- Issues and PRs are welcome; responses are best-effort
+- **Use at your own risk:** back up your data/images and test on a small subset first
+  - We strongly recommend duplicating your image folders before running any filters, in case something fails or behaves unexpectedly
+- Dependencies may change — pin versions if you need reproducibility (e.g., keep a `requirements.txt`)
+
+---
+
+## AI Use
+
+Some parts of this project (code and docs) were drafted with help from AI tools. We (humans) set the goals, reviewed outputs, tested, and made changes.
+
+What AI helped with:
+- Speeding up development and troubleshooting command-line inputs
+- Suggesting improvements and design changes to improve speed for large (100k+) imagesets
+- Drafting parts of README
+
+Human review:
+- Each code file was used and tested by a human to ensure it works properly and as expected
+- Tested with 250k images
+- If you spot an issue, please open an issue or a Pull Request and we’ll attempt to fix it
+
+---
+
 ## License
 
+MIT License (See files)
 ```
