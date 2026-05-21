@@ -1,0 +1,18 @@
+# Core dependencies
+pillow>=10.0
+pillow-heif>=0.13
+numpy>=1.24
+tqdm>=4.65
+imagehash>=4.3
+torch>=2.0
+open-clip-torch>=2.23
+ultralytics>=8.0
+opencv-python>=4.8
+
+# Optional extras (uncomment what you want)
+# mediapipe>=0.10           # better face detection
+# faiss-cpu>=1.7            # fast near-dup search at scale
+# transformers>=4.30        # pretrained NSFW classifier
+# accelerate>=0.20          # speeds up transformers
+# fiftyone>=0.21            # for `imgcurate seed` (Open Images)
+# pandas>=2.0               # for `imgcurate seed`
