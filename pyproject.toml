@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imgcurate"
+version = "0.2.0"
+description = "Large-scale image curation: dedup, people/face filter, NSFW screen, square-crop export"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "Anthony Rebello"}]
+keywords = ["images", "deduplication", "curation", "dataset"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+    "pillow>=10.0",
+    "pillow-heif>=0.13",
+    "numpy>=1.24",
+    "tqdm>=4.65",
+    "imagehash>=4.3",
+    "torch>=2.0",
+    "open-clip-torch>=2.23",
+    "ultralytics>=8.0",
+    "opencv-python>=4.8",
+]
+
+[project.optional-dependencies]
+mediapipe = ["mediapipe>=0.10"]
+faiss = ["faiss-cpu>=1.7"]
+nsfw-classifier = ["transformers>=4.30", "accelerate>=0.20"]
+seed = ["fiftyone>=0.21", "pandas>=2.0"]
+all = [
+    "mediapipe>=0.10",
+    "faiss-cpu>=1.7",
+    "transformers>=4.30",
+    "accelerate>=0.20",
+    "fiftyone>=0.21",
+    "pandas>=2.0",
+]
+
+[project.scripts]
+imgcurate = "imgcurate.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["imgcurate*"]

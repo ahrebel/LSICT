@@ -1,228 +1,228 @@
-# Large-Scale Image Curation Toolkit
+# imgcurate
 
-A practical toolkit for curating *very large* image folders. It:
+A cross-platform (macOS / Windows / Linux) toolkit for curating very large image folders. It:
 
-- removes **people/faces** (to an **Unkept** folder),
-- finds **duplicates & near-duplicates** (also to **Unkept**),
-- exports a clean **Kept** set as **center-cropped 300×300 JPEGs** named `1.jpg`, `2.jpg`, …
-- (optional) screens for **NSFW** and moves only “safe” images to **FinalImageSet**.
+- **filters out people and faces** (mirrors them to `UNKEPT`),
+- finds **exact and near-duplicates** (also to `UNKEPT`),
+- exports a clean **Kept** set as center-cropped **300×300 JPEGs** named `1.jpg`, `2.jpg`, …,
+- (optional) screens for **NSFW** and moves only safe images to a final folder,
+- (optional) seeds a diverse dataset from **Open Images v7**.
 
-> Designed to be **incremental-safe** and to handle **hundreds of thousands** of images.
+Designed for **incremental-safe** runs over **hundreds of thousands** of images — a SQLite cache means re-runs only process files that changed.
 
----
-
-## Contents
-
-- `dedupe_and_people.py` — main pipeline: people/face filtering → dedup (exact + near) → export 300×300 Kept
-- `resume_dedupe_export.py` — **resume** dedupe + export using an existing Unkept mirror (skip people/face step)
-- `nsfw_filter_move.py` — stand-alone NSFW screen that moves **only SAFE** images to `FinalImageSet`
-- `imageget.py` — utility to seed a diverse dataset from Open Images v7 via FiftyOne and save as 300×300
-
-> **Note:** The **resume script is not always needed** — only use `resume_dedupe_export.py` if you already completed (or mostly completed) the people/face step and have a populated **Unkept** that you want to reuse.
+This is a rewrite of an earlier 3-script toolkit. Major changes are listed at the bottom.
 
 ---
 
 ## Installation
 
-Tested with Python **3.10–3.12** on macOS (Apple Silicon). Use a virtualenv if you like.
-
-**Core dependencies (main pipeline):**
-```bash
-python3 -m pip install pillow imagehash numpy tqdm torch open-clip-torch ultralytics opencv-python
-````
-
-**Optional: NSFW and seeding**
+Python 3.10–3.12. macOS (Intel or Apple Silicon), Windows 10+, or Linux.
 
 ```bash
-# If your nsfw_filter_move.py uses NudeNet:
-python3 -m pip install "nudenet==2.0.6" pillow tqdm
-
-# If your nsfw_filter_move.py uses CLIP (zero-shot):
-python3 -m pip install open-clip-torch pillow tqdm
-
-# For image seeding via Open Images v7:
-python3 -m pip install fiftyone pandas
+pip install -e .
 ```
 
-**Models downloaded on first use**
-
-* YOLOv8n (`ultralytics`) for person detection (class `person`)
-* OpenCV Haar cascade for faces
-* CLIP ViT-B/32 (`open-clip-torch`) for near-dup verification (and zero-shot NSFW, if used)
-
----
-
-## Quick Start
-
-### A) Full clean run (two inputs)
+Optional extras:
 
 ```bash
-python3 dedupe_and_people.py \
-  --input "/path/to/data" \
-  --input "/path/to/data2" \
-  --kept "/path/to/Kept" \
-  --unkept "/path/to/Unkept" \
-  --similarity 0.90 \
-  --phash-hamming 30 \
-  --batch 256 \
-  --max-size 512 \
-  --copy-instead
+pip install -e ".[mediapipe]"          # better face detector
+pip install -e ".[faiss]"              # fast near-dup search at scale
+pip install -e ".[nsfw-classifier]"    # pretrained NSFW model (recommended)
+pip install -e ".[seed]"               # Open Images seeding
+pip install -e ".[all]"                # everything
 ```
 
-**What happens**
+On first run, model weights are auto-downloaded:
 
-1. **People/face filter** → matches are **mirrored** into `Unkept` (input tree preserved).
-2. **Deduplication**
-
-   * **Exact dups:** SHA-256 groups; keep a representative (policy configurable), send others to `Unkept`
-   * **Near dups:** 256-bit pHash → CLIP similarity verify → send near-dups to `Unkept`
-3. **Export Kept** as numbered **300×300** JPEGs (`1.jpg`, `2.jpg`, …)
-
-**Safety:** Pass `--copy-instead` to avoid moving any originals.
-**Log:** `KEPT/run_log.csv` (`original_path,outcome,kept_index,unkept_relpath`).
+- YOLOv8n (~6 MB) for person detection
+- OpenCV Haar cascade (bundled with opencv-python)
+- CLIP ViT-B/32 (~600 MB) for near-dup verification & zero-shot NSFW
+- MediaPipe face landmarker (small) if installed
+- Falconsai/nsfw_image_detection (~120 MB) on first `nsfw` use if installed
 
 ---
 
-### B) Resume dedupe + export only (skip people/face)
+## Quick start
 
-Use this **only** if your `Unkept` already contains the people/face filtered images (e.g., you stopped after Stage 1). Otherwise, it’s **not needed** — just rerun the main pipeline.
+### Full pipeline (one command)
 
 ```bash
-python3 -u resume_dedupe_export.py \
-  --input "/path/to/data" \
-  --input "/path/to/data2" \
-  --unkept "/path/to/Unkept" \
-  --kept "/path/to/Kept" \
-  --similarity 0.90 \
-  --phash-hamming 30 \
-  --batch 256 \
-  --max-size 512
+imgcurate run \
+    --input "D:/Photos/raw1" --input "D:/Photos/raw2" \
+    --kept "D:/Photos/Kept" \
+    --unkept "D:/Photos/Unkept" \
+    --copy-instead \
+    --similarity 0.90 \
+    --phash-hamming 30
 ```
 
-This skips detection, treats `Unkept` as a “mask” of already-rejected files, then runs dedupe + export.
+On macOS the paths just look different:
+
+```bash
+imgcurate run \
+    --input "/Volumes/Drive/Photos/raw1" --input "/Volumes/Drive/Photos/raw2" \
+    --kept "/Volumes/Drive/Photos/Kept" \
+    --unkept "/Volumes/Drive/Photos/Unkept" \
+    --copy-instead
+```
+
+What it does:
+
+1. **Detect** — YOLO finds images containing people; remaining are face-checked (MediaPipe → Haar fallback). All flagged files are mirrored to `Unkept`.
+2. **Dedup** — exact dupes by SHA-256 + near-dupes by pHash + CLIP cosine. Reps stay; others go to `Unkept`.
+3. **Export** — survivors center-cropped to 300×300 JPEGs, numbered `1.jpg`, `2.jpg`, …
+
+A `manifest.csv` is written next to the exports mapping each output number back to its original path.
+
+### At scale (>50k images), use FAISS
+
+```bash
+imgcurate run \
+    --input "C:/data/photos" \
+    --kept "C:/data/Kept" --unkept "C:/data/Unkept" \
+    --use-faiss --faiss-k 50 \
+    --copy-instead
+```
+
+FAISS HNSW over CLIP embeddings finds near-dups in O(n log n) instead of the bucketed pHash approach's O(b·k²). On 250k images this is the difference between hours and minutes for the near-dup stage.
+
+### NSFW screen (run after `imgcurate run`)
+
+```bash
+imgcurate nsfw \
+    --src "D:/Photos/Kept" \
+    --dst "D:/Photos/FinalImageSet" \
+    --backend classifier \
+    --threshold 0.5 \
+    --copy
+```
+
+Backends: `classifier` (Falconsai, accurate, needs `transformers`), `clip` (zero-shot, no extras), `auto` (prefers classifier, falls back to CLIP). Only SAFE images are moved/copied; UNSAFE stay put.
+
+### Seed from Open Images v7
+
+```bash
+imgcurate seed \
+    --output "D:/Photos/seed" \
+    --num-categories 1000 \
+    --images-per-category 2 \
+    --side 300 \
+    --seed 42
+```
 
 ---
 
-### C) Optional: Final NSFW screen (move **only safe** images)
+## Subcommands
 
-**Check which variant your `nsfw_filter_move.py` uses:**
+| Command   | What it does                                                |
+| --------- | ----------------------------------------------------------- |
+| `run`     | Full pipeline: detect → dedup → export                      |
+| `detect`  | Just people/face filtering → UNKEPT                         |
+| `dedup`   | Just exact + near deduplication → UNKEPT                    |
+| `export`  | Center-crop survivors → numbered 300×300 JPEGs              |
+| `nsfw`    | NSFW screen: move only SAFE images to a destination         |
+| `seed`    | Seed a diverse set from Open Images v7                      |
+| `cache`   | Inspect / prune / clear the SQLite cache                    |
 
-* If it imports `NudeClassifier`, follow **NudeNet** instructions:
+Each subcommand supports `--help`. Every subcommand that needs models accepts `--device {auto,cuda,mps,cpu}`. `auto` picks CUDA → MPS → CPU.
 
-  ```bash
-  python3 -m pip install "nudenet==2.0.6" pillow tqdm
+### Resuming
 
-  python3 -u nsfw_filter_move.py \
-    --src "/path/to/Kept" \
-    --dst "/path/to/FinalImageSet" \
-    --unsafe-threshold 0.50 \
-    --block-sexy        # optional: count 'sexy' as unsafe
-  ```
+The old `resume_dedupe_export.py` is gone — it's no longer needed. The SQLite cache makes a second `imgcurate run` cheap (it skips anything already computed). If you stopped after detection and want to resume from dedup:
 
-* If it imports `open_clip`, follow **CLIP zero-shot** instructions:
-
-  ```bash
-  python3 -m pip install open-clip-torch pillow tqdm
-
-  python3 -u nsfw_filter_move.py \
-    --src "/path/to/Kept" \
-    --dst "/path/to/FinalImageSet" \
-    --nsfw-thresh 0.55   # lower = stricter, higher = more lenient
-  ```
-
-The script **moves/copies only SAFE images** into `FinalImageSet`, avoiding filename collisions by adding ` (1)`, ` (2)`, etc.
+```bash
+imgcurate run --input ... --kept ... --unkept ... --skip-detect
+```
 
 ---
 
-## Script Details & Options
+## Cache
 
-### `dedupe_and_people.py`
+By default a SQLite cache lives at `<kept>/.imgcurate_cache.sqlite`. It stores:
 
-* `--input PATH` (repeatable): one or more input roots
-* `--kept PATH`: output folder for numbered 300×300 JPEGs
-* `--unkept PATH`: mirrored folder tree for people/dupes
-* `--copy-instead`: copy to Unkept instead of move (safer for originals)
-* `--overwrite-unkept`: overwrite collisions in Unkept (default creates ` (1)`, ` (2)` suffixes)
-* `--no-clean-kept`: don’t wipe Kept before export (numbering may become non-contiguous)
-* `--similarity 0.90`: CLIP cosine threshold for near-dup grouping
-* `--phash-hamming 30`: pHash prefilter tightness (0–256)
-* `--batch 256`: CLIP batch size
-* `--max-size 512`: long edge resize before CLIP
-* `--kept-side 300`: output crop size (default 300)
+- SHA-256 of each file (for exact-dup detection)
+- 256-bit pHash
+- CLIP embedding (~2 KB / image)
+- Person/face detection results
+- NSFW score
 
-### `resume_dedupe_export.py`
+Cache validity is keyed on `(absolute_path, size, mtime)`. If you edit or replace a file, that row is invalidated and recomputed on the next pass. Files moved or renamed are simply re-cached at the new path.
 
-* Same dedup/export options as above
-* **Skips detection** and uses existing `Unkept` to mask already-rejected files
+```bash
+imgcurate cache --db /path/to/.imgcurate_cache.sqlite info
+imgcurate cache --db /path/to/.imgcurate_cache.sqlite prune    # drop rows for missing files
+imgcurate cache --db /path/to/.imgcurate_cache.sqlite clear    # wipe everything
+```
 
-### `nsfw_filter_move.py`
-
-* NudeNet variant: `--unsafe-threshold` (0..1), `--block-sexy`, `--batch`, `--copy`
-* CLIP variant: `--nsfw-thresh` (probability cutoff), `--batch`, `--copy`
-
-### `imageget.py`
-
-* Seeds a diverse set from Open Images v7 via FiftyOne
-* Saves **300×300** crops to your target folder, with integer filenames
-  (prints progress every 100 images)
+For 250k images the cache db is typically 600 MB–1 GB (CLIP embeddings dominate). Disable with `--no-cache` if you want recompute-everything-every-time behavior.
 
 ---
 
-## Performance & Tips
+## Cross-platform notes
 
-* **Apple Silicon:** CLIP will use **MPS** automatically; YOLO runs on CPU by default with `ultralytics`.
-* **Very large datasets:** Stage 1 (people/face) is the longest. Stage 2 may appear “quiet” during hashing and grouping — watch CPU usage.
-* **Incremental runs:** Add more images to any input folder and rerun — Unkept mirroring is **incremental-safe** (identical files skipped; differing content gets suffixed unless `--overwrite-unkept`). Kept numbering resets unless `--no-clean-kept`.
-* **Disk space:** Ensure enough room for Unkept mirrors and Kept exports.
-* **Live logs:** Use `python3 -u` for unbuffered progress output.
-
----
-
-## FAQ
-
-**Does it check duplicates across multiple folders?**
-Yes — pass multiple `--input` roots; dedup considers them together.
-
-**Does it delete my originals?**
-Only if you *don’t* use `--copy-instead`. For safety, run with `--copy-instead` so Unkept receives **copies**.
-
-**Where is the decision log?**
-`KEPT/run_log.csv` lists every decision: `person`, `face`, `duplicate_exact`, `duplicate_near`, or `kept`.
-
-**Do I always need the resume script?**
-**No.** Use `resume_dedupe_export.py` only when you already have a populated `Unkept` from a prior run and want to **skip** people/face detection.
+| Concern                          | Status                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Windows long paths (>260 chars)  | Auto-prefixed with `\\?\` in `normalize_path`                                                   |
+| Non-ASCII paths on Windows       | All image reads go through `cv2.imdecode(np.fromfile(...))` to avoid the `cv2.imread` bug       |
+| Multiprocessing on Windows       | `seed` uses a top-level worker function and is only spawned from inside `__main__` (CLI entry)  |
+| Mac MPS / CUDA / CPU             | Auto-detected; explicit selection via `--device`                                                |
+| Path case-insensitivity (Win)    | Cache keys lowercased on Windows                                                                |
+| Atomic writes                    | All exports go through `os.replace(tmp, final)` — no half-written files on Ctrl+C               |
+| EXIF orientation                 | Applied via `ImageOps.exif_transpose` before any further processing                             |
+| HEIC / HEIF                      | Supported when `pillow-heif` is installed (it's a hard dep)                                     |
 
 ---
 
-## Support & Maintenance
+## Tuning
 
-This project is **not actively maintained**. It’s provided **as is** as a starting point for experiments, and we **do not guarantee** it will work on your setup.
+**Similarity threshold (`--similarity`, default 0.90)** — CLIP cosine cutoff for declaring near-duplicates. Higher = stricter. 0.95 catches only very tight reproductions; 0.85 will pull in same-scene-different-shot pairs.
 
-- No SLA or official support
-- Issues and PRs are welcome; responses are best-effort
-- **Use at your own risk:** back up your data/images and test on a small subset first
-  - We strongly recommend duplicating your image folders before running any filters, in case something fails or behaves unexpectedly
-- Dependencies may change — pin versions if you need reproducibility (e.g., keep a `requirements.txt`)
+**pHash threshold (`--phash-hamming`, default 30)** — Only matters when not using `--use-faiss`. Hamming distance over 256 bits for candidate pairing. Higher = more candidates (slower CLIP verify but better recall). 20–40 is reasonable.
+
+**Representative policy (`--rep-policy`, default `sharpest`)** — Which file to keep from a duplicate group:
+
+- `sharpest` — highest variance-of-Laplacian (best focus). Requires opening each file in the group.
+- `largest` — largest on-disk size. Cheap.
+- `newest` / `oldest` — by mtime.
+- `first` — lexicographic. Fully deterministic, no I/O.
+
+**Face backend (`--face-backend`, default `auto`)** — `mediapipe` is much better at angled/partial faces than the OpenCV Haar cascade; if `mediapipe` is installed, `auto` picks it. Use `--face-backend off` if you only want YOLO person detection.
+
+**YOLO confidence (`--yolo-conf`, default 0.25)** — Lower = more aggressive person flagging. 0.15 is paranoid; 0.4 is permissive.
+
+---
+
+## What changed vs. the previous toolkit
+
+| Old                                            | New                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| Three overlapping scripts                      | One package, one CLI, six subcommands                        |
+| No cache — every run recomputes everything     | SQLite cache keyed on `(path, size, mtime)`                  |
+| pHash bucketing only                           | Add FAISS HNSW over CLIP embeddings (`--use-faiss`)          |
+| OpenCV Haar face detector only                 | MediaPipe option (better recall on profiles/angles)          |
+| CLIP zero-shot NSFW only                       | Add Falconsai classifier option (much more accurate)         |
+| No HEIC / HEIF support                         | Supported via pillow-heif                                    |
+| No EXIF orientation handling                   | Auto-applied                                                 |
+| Non-atomic JPEG writes                         | Temp file + `os.replace`                                     |
+| `largest` rep selection only                   | `sharpest` (default) / `largest` / `newest` / `oldest` / `first` |
+| Hardcoded `/Volumes/...` in seed script        | Cross-platform, takes `--output`                             |
+| `multiprocessing.Pool` without `__main__` guard (broke on Windows) | Worker is module-level; spawned only via CLI entry            |
+| `cv2.imread` (fails on Windows non-ASCII paths) | Already used `cv2.imdecode(np.fromfile(...))` — kept         |
+| Implicit device choice                         | Explicit `--device {auto,cuda,mps,cpu}`                      |
+| Separate "resume" script                       | Just rerun — cache handles incremental                       |
 
 ---
 
-## AI Use
+## Safety
 
-Some parts of this project (code and docs) were drafted with help from AI tools. We (humans) set the goals, reviewed outputs, tested, and made changes.
-
-What AI helped with:
-- Speeding up development and troubleshooting command-line inputs
-- Suggesting improvements and design changes to improve speed for large (100k+) imagesets
-- Drafting parts of README
-
-Human review:
-- Each code file was used and tested by a human to ensure it works properly and as expected
-- Tested with 250k images
-- If you spot an issue, please open an issue or a Pull Request and we’ll attempt to fix it
-
----
+- Default is **copy** to `UNKEPT` via `--copy-instead`. Without that flag, files are *moved*. Test on a small subset first.
+- Cache and outputs are independent of input files. Wiping outputs never touches your originals.
+- `imgcurate cache prune` is safe — it only removes rows where the file no longer exists.
 
 ## License
 
-MIT License (See files)
-```
+MIT — see [LICENSE](LICENSE).
+
+## AI use
+
+Some parts of this code and these docs were drafted with help from AI tools. A human set the goals, reviewed output, and tested at 250k-image scale.
