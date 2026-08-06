@@ -14,7 +14,7 @@ from typing import Optional
 
 from tqdm import tqdm
 
-from imgcurate.core import (
+from lsict.core import (
     atomic_save_image,
     center_crop_square_resize,
     ensure_dir,

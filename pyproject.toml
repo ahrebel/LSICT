@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "imgcurate"
-version = "0.2.0"
-description = "Large-scale image curation: dedup, people/face filter, NSFW screen, square-crop export"
+name = "lsict"
+version = "0.3.0"
+description = "LSICT — large-scale image curation: dedup, people/face filter, NSFW screen, square-crop export, local web GUI"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -33,11 +33,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+gui = ["gradio>=6.0"]
 mediapipe = ["mediapipe>=0.10"]
 faiss = ["faiss-cpu>=1.7"]
 nsfw-classifier = ["transformers>=4.30", "accelerate>=0.20"]
 seed = ["fiftyone>=0.21", "pandas>=2.0"]
 all = [
+    "gradio>=6.0",
     "mediapipe>=0.10",
     "faiss-cpu>=1.7",
     "transformers>=4.30",
@@ -47,8 +49,8 @@ all = [
 ]
 
 [project.scripts]
-imgcurate = "imgcurate.cli:main"
+lsict = "lsict.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["imgcurate*"]
+include = ["lsict*"]

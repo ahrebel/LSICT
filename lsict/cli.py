@@ -1,4 +1,4 @@
-"""imgcurate CLI.
+"""LSICT CLI.
 
 Subcommands:
   run     Full pipeline: detect people/faces -> dedup -> export
@@ -7,6 +7,7 @@ Subcommands:
   export  Just numbered 300x300 export
   nsfw    NSFW screen — move SAFE to FinalImageSet
   seed    Seed a diverse set from Open Images v7
+  gui     Local web GUI (browser-based)
   cache   Inspect / prune / clear the SQLite cache
 """
 from __future__ import annotations
@@ -20,17 +21,15 @@ from typing import Optional
 
 from tqdm import tqdm
 
-from imgcurate import __version__
-from imgcurate.cache import Cache, default_cache_path
-from imgcurate.core import (
-    HEIC_AVAILABLE,
+from lsict import __version__
+from lsict.cache import Cache, default_cache_path
+from lsict.core import (
     IS_WINDOWS,
     ensure_dir,
     is_image_file,
     mirror_to_unkept,
     normalize_path,
     pick_device,
-    scan_images,
 )
 
 
@@ -71,18 +70,18 @@ def add_device_args(p: argparse.ArgumentParser) -> None:
 
 def add_cache_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--cache-db", default=None,
-                   help="Path to SQLite cache (default: <kept>/.imgcurate_cache.sqlite)")
+                   help="Path to SQLite cache (default: <kept>/.lsict_cache.sqlite)")
     p.add_argument("--no-cache", action="store_true",
                    help="Disable cache (always recompute everything)")
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="imgcurate",
-        description="Large-scale image curation: dedup, people/face filter, "
-                    "NSFW screen, square-crop export.",
+        prog="lsict",
+        description="LSICT — large-scale image curation: dedup, people/face "
+                    "filter, NSFW screen, square-crop export.",
     )
-    p.add_argument("--version", action="version", version=f"imgcurate {__version__}")
+    p.add_argument("--version", action="version", version=f"lsict {__version__}")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
 
     sub = p.add_subparsers(dest="command", required=True)
@@ -194,6 +193,15 @@ def build_parser() -> argparse.ArgumentParser:
     ps.add_argument("--seed", type=int, default=None, help="RNG seed for reproducibility")
     ps.set_defaults(func=cmd_seed)
 
+    # gui
+    pg = sub.add_parser("gui", help="Launch the local web GUI in your browser")
+    pg.add_argument("--host", default="127.0.0.1",
+                    help="Bind address (default 127.0.0.1 — local only)")
+    pg.add_argument("--port", type=int, default=7860, help="Port (default 7860)")
+    pg.add_argument("--no-browser", action="store_true",
+                    help="Don't auto-open a browser tab")
+    pg.set_defaults(func=cmd_gui)
+
     # cache
     pc = sub.add_parser("cache", help="Inspect / prune / clear the SQLite cache")
     pc.add_argument("--db", required=True, help="Path to cache db")
@@ -207,26 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _collect_inputs(input_args: list[str]) -> tuple[list[Path], dict[Path, Path]]:
     """Resolve --input args, validate, scan all images, build roots_map."""
-    roots = [normalize_path(p) for p in input_args]
-    for r in roots:
-        if not r.exists():
-            logging.error("Input root does not exist: %s", r)
-            sys.exit(2)
-
-    all_imgs: list[Path] = []
-    roots_map: dict[Path, Path] = {}
-    for p, root in scan_images(roots):
-        all_imgs.append(p)
-        roots_map[p] = root
-    logging.info("Scanned %d images across %d input root(s).", len(all_imgs), len(roots))
-    if not HEIC_AVAILABLE:
-        n_heic = sum(1 for p in all_imgs if p.suffix.lower() in {".heic", ".heif"})
-        if n_heic:
-            logging.warning(
-                "%d HEIC/HEIF files found but pillow-heif not installed — they will be skipped.",
-                n_heic,
-            )
-    return all_imgs, roots_map
+    from lsict.pipeline import collect_inputs
+    try:
+        return collect_inputs(input_args)
+    except ValueError as e:
+        logging.error("%s", e)
+        sys.exit(2)
 
 
 def _open_cache(args, anchor_dir: Path) -> Optional[Cache]:
@@ -240,134 +234,38 @@ def _open_cache(args, anchor_dir: Path) -> Optional[Cache]:
 
 def cmd_run(args) -> int:
     """Full pipeline."""
-    all_imgs, roots_map = _collect_inputs(args.input)
-    if not all_imgs:
-        logging.warning("No images to process.")
-        return 0
-
-    kept_dir = normalize_path(args.kept)
-    unkept_dir = normalize_path(args.unkept)
-    ensure_dir(kept_dir)
-    ensure_dir(unkept_dir)
-
-    device = pick_device(args.device)
-    logging.info("Device: %s", device)
-
-    cache = _open_cache(args, anchor_dir=kept_dir)
-    if cache is None:
-        # Build an in-memory cache so the modules still work, but it won't persist
-        cache = Cache(Path(":memory:"))
-
+    from lsict.pipeline import run_full_pipeline
     try:
-        rejected: set[Path] = set()
-        outcomes: dict[Path, str] = {}
-
-        # ----- Stage 1: detect -----
-        if not args.skip_detect:
-            from imgcurate.detect import run_detection
-            det = run_detection(
-                files=all_imgs,
-                cache=cache,
-                device=device,
-                face_backend=args.face_backend,
-                yolo_batch=args.yolo_batch,
-                yolo_conf=args.yolo_conf,
-            )
-            for p, info in det.items():
-                if info["has_person"]:
-                    mirror_to_unkept(p, roots_map[p], unkept_dir,
-                                     args.copy_instead, args.overwrite_unkept)
-                    rejected.add(p)
-                    outcomes[p] = "person"
-                elif info["has_face"]:
-                    mirror_to_unkept(p, roots_map[p], unkept_dir,
-                                     args.copy_instead, args.overwrite_unkept)
-                    rejected.add(p)
-                    outcomes[p] = "face"
-        else:
-            logging.info("Skipping detect stage (--skip-detect)")
-
-        # ----- Stage 2: dedup -----
-        survivors = [p for p in all_imgs if p not in rejected]
-        # Re-check existence (some may have been moved)
-        survivors = [p for p in survivors if p.exists()]
-        logging.info("Survivors entering dedup: %d", len(survivors))
-
-        from imgcurate.dedup import (
-            find_exact_duplicates,
-            find_near_duplicates_phash,
-            find_near_duplicates_faiss,
-            pick_representative,
-        )
-        exact_groups = find_exact_duplicates(survivors, cache)
-        for sha, group in exact_groups.items():
-            rep = pick_representative(group, policy=args.rep_policy)
-            for f in group:
-                if f != rep:
-                    mirror_to_unkept(f, roots_map[f], unkept_dir,
-                                     args.copy_instead, args.overwrite_unkept)
-                    rejected.add(f)
-                    outcomes[f] = "duplicate_exact"
-
-        survivors = [p for p in survivors if p not in rejected]
-        survivors = [p for p in survivors if p.exists()]
-
-        if args.use_faiss:
-            near_groups = find_near_duplicates_faiss(
-                survivors, cache, device,
-                similarity=args.similarity,
-                clip_batch=args.clip_batch,
-                clip_max_size=args.clip_max_size,
-                faiss_k=args.faiss_k,
-            )
-        else:
-            near_groups = find_near_duplicates_phash(
-                survivors, cache, device,
-                phash_hamming=args.phash_hamming,
-                similarity=args.similarity,
-                clip_batch=args.clip_batch,
-                clip_max_size=args.clip_max_size,
-            )
-        for group in near_groups:
-            rep = pick_representative(group, policy=args.rep_policy)
-            for f in group:
-                if f != rep:
-                    mirror_to_unkept(f, roots_map[f], unkept_dir,
-                                     args.copy_instead, args.overwrite_unkept)
-                    rejected.add(f)
-                    outcomes[f] = "duplicate_near"
-
-        # ----- Stage 3: export -----
-        final_survivors = [p for p in all_imgs if p not in rejected and p.exists()]
-        logging.info("Final survivors to export: %d", len(final_survivors))
-
-        from imgcurate.export import export_numbered
-        count, manifest = export_numbered(
-            final_survivors,
-            kept_dir,
-            side=args.kept_side,
+        summary = run_full_pipeline(
+            args.input,
+            args.kept,
+            args.unkept,
+            copy_instead=args.copy_instead,
+            overwrite_unkept=args.overwrite_unkept,
+            device=args.device,
+            face_backend=args.face_backend,
+            yolo_conf=args.yolo_conf,
+            yolo_batch=args.yolo_batch,
+            similarity=args.similarity,
+            phash_hamming=args.phash_hamming,
+            clip_batch=args.clip_batch,
+            clip_max_size=args.clip_max_size,
+            use_faiss=args.use_faiss,
+            faiss_k=args.faiss_k,
+            rep_policy=args.rep_policy,
+            kept_side=args.kept_side,
             jpeg_quality=args.jpeg_quality,
-            clean_first=not args.no_clean_kept,
+            clean_kept=not args.no_clean_kept,
+            skip_detect=args.skip_detect,
+            cache_db=args.cache_db,
+            no_cache=args.no_cache,
         )
-
-        summary = {
-            "total_input": len(all_imgs),
-            "rejected_person": sum(1 for v in outcomes.values() if v == "person"),
-            "rejected_face": sum(1 for v in outcomes.values() if v == "face"),
-            "rejected_exact_dup": sum(1 for v in outcomes.values() if v == "duplicate_exact"),
-            "rejected_near_dup": sum(1 for v in outcomes.values() if v == "duplicate_near"),
-            "exported": count,
-            "kept_dir": str(kept_dir),
-            "unkept_dir": str(unkept_dir),
-            "manifest_csv": str(manifest),
-            "cache_info": cache.info() if cache else None,
-        }
-        print("\n=== SUMMARY ===")
-        print(json.dumps(summary, indent=2))
-        return 0
-    finally:
-        if cache is not None:
-            cache.close()
+    except ValueError as e:
+        logging.error("%s", e)
+        return 2
+    print("\n=== SUMMARY ===")
+    print(json.dumps(summary, indent=2))
+    return 0
 
 
 def cmd_detect(args) -> int:
@@ -380,7 +278,7 @@ def cmd_detect(args) -> int:
     anchor = normalize_path(args.cache_anchor) if args.cache_anchor else unkept_dir
     cache = _open_cache(args, anchor) or Cache(Path(":memory:"))
     try:
-        from imgcurate.detect import run_detection
+        from lsict.detect import run_detection
         det = run_detection(
             files=all_imgs,
             cache=cache,
@@ -412,7 +310,7 @@ def cmd_dedup(args) -> int:
     cache = _open_cache(args, anchor) or Cache(Path(":memory:"))
 
     try:
-        from imgcurate.dedup import (
+        from lsict.dedup import (
             find_exact_duplicates,
             find_near_duplicates_phash,
             find_near_duplicates_faiss,
@@ -489,7 +387,7 @@ def cmd_export(args) -> int:
         if rel not in unkept_rels:
             survivors.append(p)
 
-    from imgcurate.export import export_numbered
+    from lsict.export import export_numbered
     count, manifest = export_numbered(
         survivors,
         kept_dir,
@@ -507,31 +405,29 @@ def cmd_export(args) -> int:
 
 
 def cmd_nsfw(args) -> int:
-    src = normalize_path(args.src)
-    dst = normalize_path(args.dst)
-    device = pick_device(args.device)
-    anchor = normalize_path(args.cache_anchor) if args.cache_anchor else dst
-    cache = _open_cache(args, anchor) or Cache(Path(":memory:"))
+    from lsict.pipeline import run_nsfw_screen
     try:
-        from imgcurate.nsfw import screen_safe
-        result = screen_safe(
-            src_dir=src,
-            dst_dir=dst,
-            cache=cache,
-            device=device,
-            threshold=args.threshold,
+        result = run_nsfw_screen(
+            args.src,
+            args.dst,
+            device=args.device,
             backend=args.backend,
+            threshold=args.threshold,
             batch=args.batch,
             copy=args.copy,
+            cache_db=args.cache_db,
+            no_cache=args.no_cache,
+            cache_anchor=args.cache_anchor,
         )
-        print(json.dumps(result, indent=2))
-        return 0
-    finally:
-        cache.close()
+    except ValueError as e:
+        logging.error("%s", e)
+        return 2
+    print(json.dumps(result, indent=2))
+    return 0
 
 
 def cmd_seed(args) -> int:
-    from imgcurate.seed import run_seed
+    from lsict.seed import run_seed
     result = run_seed(
         output_dir=normalize_path(args.output),
         num_categories=args.num_categories,
@@ -540,6 +436,18 @@ def cmd_seed(args) -> int:
         seed=args.seed,
     )
     print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_gui(args) -> int:
+    try:
+        from lsict.gui import launch_gui
+    except ImportError:
+        logging.error(
+            "The GUI requires gradio. Install it with: pip install -e \".[gui]\""
+        )
+        return 2
+    launch_gui(host=args.host, port=args.port, open_browser=not args.no_browser)
     return 0
 
 
@@ -569,7 +477,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     setup_logging(args.verbose)
-    logging.info("imgcurate %s on %s",
+    logging.info("LSICT %s on %s",
                  __version__, "Windows" if IS_WINDOWS else sys.platform)
     return args.func(args)
 

@@ -20,8 +20,8 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from imgcurate.cache import Cache
-from imgcurate.core import (
+from lsict.cache import Cache
+from lsict.core import (
     ensure_dir,
     next_nonconflicting_path,
     safe_open_pil,
@@ -176,7 +176,7 @@ def screen_safe(
     threshold: NSFW probability >= threshold => UNSAFE (excluded).
     Lower = stricter.
     """
-    from imgcurate.core import is_image_file
+    from lsict.core import is_image_file
 
     files = [p for p in src_dir.rglob("*") if p.is_file() and is_image_file(p)]
     if not files:

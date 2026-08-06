@@ -16,8 +16,8 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from imgcurate.cache import Cache
-from imgcurate.core import (
+from lsict.cache import Cache
+from lsict.core import (
     safe_open_pil,
     yolo_device_arg,
 )
