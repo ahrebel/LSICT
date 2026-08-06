@@ -434,8 +434,8 @@ def build_ui():
                             ["auto", "cuda", "mps", "cpu"], value="auto",
                             label="Device")
                         face_backend = gr.Dropdown(
-                            ["auto", "mediapipe", "haar", "off"], value="auto",
-                            label="Face detector")
+                            ["auto", "mediapipe", "yunet", "haar", "off"],
+                            value="auto", label="Face detector")
                         similarity = gr.Slider(
                             0.70, 1.00, value=0.90, step=0.01,
                             label="Near-duplicate similarity (higher = stricter)")

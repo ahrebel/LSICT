@@ -181,6 +181,7 @@ Every subcommand supports `--help` for its full options.
 - `--similarity` (default 0.90) — how alike two images must be to count as near-duplicates. Higher = stricter.
 - `--rep-policy` (default `sharpest`) — which image to keep from a duplicate group: `sharpest`, `largest`, `newest`, `oldest`, or `first`.
 - `--yolo-conf` (default 0.25) — person-detection confidence. Lower flags more aggressively.
+- `--face-backend` (default `auto`) — face detector: `mediapipe`, `yunet`, or `haar`. `auto` uses the best one available (Haar requires OpenCV 4; it was removed in OpenCV 5).
 - `--device` — `auto` (default), `cuda`, `mps`, or `cpu`.
 
 ---
