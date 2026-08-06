@@ -33,13 +33,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["gradio>=5.0"]
+gui = ["gradio>=6.0"]
 mediapipe = ["mediapipe>=0.10"]
 faiss = ["faiss-cpu>=1.7"]
 nsfw-classifier = ["transformers>=4.30", "accelerate>=0.20"]
 seed = ["fiftyone>=0.21", "pandas>=2.0"]
 all = [
-    "gradio>=5.0",
+    "gradio>=6.0",
     "mediapipe>=0.10",
     "faiss-cpu>=1.7",
     "transformers>=4.30",

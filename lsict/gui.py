@@ -21,10 +21,72 @@ logger = logging.getLogger(__name__)
 MAX_GALLERY_ITEMS = 400
 MAX_LOG_LINES = 500
 
-DISCLAIMER = (
-    "⚠️ **No guarantees** — filtering is model-based and imperfect. "
-    "Manually review the final set (Review tab) before using it anywhere sensitive."
+DISCLAIMER_HTML = (
+    '<div id="disclaimer"><strong>No guarantees.</strong> Filtering is '
+    "model-based and imperfect — it will occasionally miss people, faces, "
+    "duplicates, or unsafe content. Manually review the final set "
+    "(<em>Review</em> tab) before using it anywhere sensitive.</div>"
 )
+
+CSS = """
+.gradio-container { max-width: 1240px !important; margin: 0 auto !important; }
+
+/* ---- header ---- */
+#app-header { padding: 6px 2px 0; }
+#app-header .brand-row { display: flex; align-items: baseline; gap: 10px; }
+#app-header .wordmark {
+    font-size: 1.75rem; font-weight: 800; letter-spacing: 0.04em;
+    color: var(--body-text-color);
+}
+#app-header .version-badge {
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
+    color: var(--primary-600); background: var(--primary-50);
+    border: 1px solid var(--primary-200);
+    border-radius: 999px; padding: 2px 10px; transform: translateY(-2px);
+}
+.dark #app-header .version-badge {
+    color: var(--primary-300); background: rgba(99, 102, 241, 0.12);
+    border-color: rgba(99, 102, 241, 0.35);
+}
+#app-header .tagline {
+    margin: 2px 0 0; font-size: 0.92rem;
+    color: var(--body-text-color-subdued);
+}
+
+/* ---- disclaimer banner ---- */
+#disclaimer {
+    margin: 12px 0 4px; padding: 10px 14px; font-size: 0.88rem;
+    line-height: 1.45; border-radius: 8px;
+    border: 1px solid rgba(217, 119, 6, 0.35);
+    border-left: 4px solid #d97706;
+    background: rgba(245, 158, 11, 0.08);
+    color: var(--body-text-color);
+}
+
+/* ---- section headings inside tabs ---- */
+.section-title h4 {
+    margin: 2px 0 0; font-size: 0.8rem; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--body-text-color-subdued);
+}
+
+/* ---- console-style log ---- */
+.log-box textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+    font-size: 12px !important; line-height: 1.55 !important;
+    background: #0b1220 !important; color: #d5e0f0 !important;
+    border-radius: 8px !important;
+}
+
+/* ---- full-width action buttons ---- */
+.action-btn { width: 100%; }
+
+/* ---- footer ---- */
+#app-footer {
+    text-align: center; padding: 20px 0 8px; font-size: 0.78rem;
+    color: var(--body-text-color-subdued);
+}
+"""
 
 
 # ---------- job runner with live log streaming ----------
@@ -222,28 +284,63 @@ def _load_review(kept, unkept):
 
 # ---------- UI ----------
 
+def _make_theme(gr):
+    return gr.themes.Soft(
+        primary_hue="indigo",
+        neutral_hue="slate",
+        radius_size=gr.themes.sizes.radius_md,
+        font=["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI",
+              "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
+        font_mono=["ui-monospace", "SFMono-Regular", "Menlo", "Consolas",
+                   "monospace"],
+    )
+
+
 def build_ui():
     import gradio as gr
 
     with gr.Blocks(title="LSICT") as demo:
-        gr.Markdown(f"# LSICT\nLarge-scale image curation — v{__version__}\n\n{DISCLAIMER}")
+        gr.HTML(
+            '<div id="app-header">'
+            '  <div class="brand-row">'
+            '    <span class="wordmark">LSICT</span>'
+            f'    <span class="version-badge">v{__version__}</span>'
+            "  </div>"
+            '  <p class="tagline">Large-scale image curation — people/face '
+            "filtering, deduplication, square-crop export, NSFW screening. "
+            "Runs entirely on this machine.</p>"
+            "</div>"
+            f"{DISCLAIMER_HTML}"
+        )
 
         # ----- Curate -----
         with gr.Tab("Curate"):
-            with gr.Row():
+            with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
-                    inputs_text = gr.Textbox(
-                        label="Input folders (one per line)", lines=3,
-                        placeholder="/path/to/photos",
-                    )
-                    kept = gr.Textbox(label="Kept folder (exports go here)")
-                    unkept = gr.Textbox(label="Unkept folder (rejects mirrored here)")
-                    copy_instead = gr.Checkbox(
-                        value=True,
-                        label="Copy rejects instead of moving them (recommended)",
-                    )
-                    use_faiss = gr.Checkbox(
-                        value=False, label="Use FAISS (faster on >50k images)")
+                    gr.Markdown("#### Folders", elem_classes=["section-title"])
+                    with gr.Group():
+                        inputs_text = gr.Textbox(
+                            label="Input folders (one per line)", lines=3,
+                            placeholder="/path/to/photos",
+                        )
+                        kept = gr.Textbox(
+                            label="Kept folder",
+                            info="Numbered 300×300 exports go here",
+                            placeholder="/path/to/Kept",
+                        )
+                        unkept = gr.Textbox(
+                            label="Unkept folder",
+                            info="Rejected files are mirrored here",
+                            placeholder="/path/to/Unkept",
+                        )
+                    gr.Markdown("#### Options", elem_classes=["section-title"])
+                    with gr.Group():
+                        copy_instead = gr.Checkbox(
+                            value=True,
+                            label="Copy rejects instead of moving them (recommended)",
+                        )
+                        use_faiss = gr.Checkbox(
+                            value=False, label="Use FAISS (faster on >50k images)")
                     with gr.Accordion("Advanced", open=False):
                         device = gr.Dropdown(
                             ["auto", "cuda", "mps", "cpu"], value="auto",
@@ -274,9 +371,13 @@ def build_ui():
                             label="Clear existing exports in Kept first")
                         no_cache = gr.Checkbox(
                             value=False, label="Disable cache (recompute everything)")
-                    run_btn = gr.Button("Run pipeline", variant="primary")
+                    run_btn = gr.Button("Run pipeline", variant="primary",
+                                        size="lg", elem_classes=["action-btn"])
                 with gr.Column(scale=1):
-                    run_log = gr.Textbox(label="Log", lines=22, interactive=False)
+                    run_log = gr.Textbox(
+                        label="Log", lines=22, interactive=False,
+                        elem_classes=["log-box"],
+                        placeholder="Pipeline output appears here…")
                     run_summary = gr.JSON(label="Summary")
             run_btn.click(
                 _curate_job,
@@ -289,24 +390,37 @@ def build_ui():
 
         # ----- NSFW screen -----
         with gr.Tab("NSFW screen"):
-            with gr.Row():
+            with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
-                    nsfw_src = gr.Textbox(label="Source folder (e.g. your Kept folder)")
-                    nsfw_dst = gr.Textbox(label="Destination for SAFE images")
-                    nsfw_copy = gr.Checkbox(value=True, label="Copy instead of move")
-                    nsfw_backend = gr.Dropdown(
-                        ["auto", "classifier", "clip"], value="auto", label="Backend")
-                    nsfw_threshold = gr.Slider(
-                        0.0, 1.0, value=0.5, step=0.05,
-                        label="NSFW threshold (lower = stricter)")
+                    gr.Markdown("#### Folders", elem_classes=["section-title"])
+                    with gr.Group():
+                        nsfw_src = gr.Textbox(
+                            label="Source folder",
+                            info="Usually your Kept folder",
+                            placeholder="/path/to/Kept")
+                        nsfw_dst = gr.Textbox(
+                            label="Destination for SAFE images",
+                            placeholder="/path/to/FinalImageSet")
+                    gr.Markdown("#### Options", elem_classes=["section-title"])
+                    with gr.Group():
+                        nsfw_copy = gr.Checkbox(value=True, label="Copy instead of move")
+                        nsfw_backend = gr.Dropdown(
+                            ["auto", "classifier", "clip"], value="auto", label="Backend")
+                        nsfw_threshold = gr.Slider(
+                            0.0, 1.0, value=0.5, step=0.05,
+                            label="NSFW threshold (lower = stricter)")
                     with gr.Accordion("Advanced", open=False):
                         nsfw_device = gr.Dropdown(
                             ["auto", "cuda", "mps", "cpu"], value="auto",
                             label="Device")
                         nsfw_batch = gr.Number(value=32, precision=0, label="Batch size")
-                    nsfw_btn = gr.Button("Screen", variant="primary")
+                    nsfw_btn = gr.Button("Screen", variant="primary",
+                                         size="lg", elem_classes=["action-btn"])
                 with gr.Column(scale=1):
-                    nsfw_log = gr.Textbox(label="Log", lines=16, interactive=False)
+                    nsfw_log = gr.Textbox(
+                        label="Log", lines=16, interactive=False,
+                        elem_classes=["log-box"],
+                        placeholder="Screening output appears here…")
                     nsfw_summary = gr.JSON(label="Summary")
             nsfw_btn.click(
                 _nsfw_job,
@@ -322,9 +436,11 @@ def build_ui():
                 "files (with the reason) on the right."
             )
             with gr.Row():
-                review_kept = gr.Textbox(label="Kept folder")
-                review_unkept = gr.Textbox(label="Unkept folder")
-                review_btn = gr.Button("Load", variant="primary")
+                review_kept = gr.Textbox(label="Kept folder", scale=2,
+                                         placeholder="/path/to/Kept")
+                review_unkept = gr.Textbox(label="Unkept folder", scale=2,
+                                           placeholder="/path/to/Unkept")
+                review_btn = gr.Button("Load", variant="primary", scale=1)
             review_status = gr.Markdown()
             with gr.Row():
                 kept_gallery = gr.Gallery(
@@ -338,11 +454,18 @@ def build_ui():
                 outputs=[review_status, kept_gallery, unkept_gallery],
             )
 
+        gr.HTML(
+            f'<div id="app-footer">LSICT v{__version__} · MIT license · '
+            "local only — nothing leaves this machine</div>"
+        )
+
     return demo
 
 
 def launch_gui(host: str = "127.0.0.1", port: int = 7860,
-               open_browser: bool = True) -> None:
+               open_browser: bool = True, **launch_kwargs) -> None:
+    import gradio as gr
+
     demo = build_ui()
     logger.info("LSICT GUI on http://%s:%d", host, port)
     demo.queue().launch(
@@ -350,4 +473,7 @@ def launch_gui(host: str = "127.0.0.1", port: int = 7860,
         server_port=port,
         inbrowser=open_browser,
         share=False,
+        theme=_make_theme(gr),
+        css=CSS,
+        **launch_kwargs,
     )

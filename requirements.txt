@@ -10,7 +10,7 @@ ultralytics>=8.0
 opencv-python>=4.8
 
 # Optional extras (uncomment what you want)
-# gradio>=5.0               # local web GUI (`lsict gui`)
+# gradio>=6.0               # local web GUI (`lsict gui`)
 # mediapipe>=0.10           # better face detection
 # faiss-cpu>=1.7            # fast near-dup search at scale
 # transformers>=4.30        # pretrained NSFW classifier
