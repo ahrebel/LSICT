@@ -14,7 +14,7 @@ from typing import Optional
 
 import numpy as np
 
-from imgcurate.core import cache_key, file_fingerprint, IS_WINDOWS
+from lsict.core import cache_key, file_fingerprint, IS_WINDOWS
 
 logger = logging.getLogger(__name__)
 
@@ -255,5 +255,13 @@ class _Transaction:
 
 
 def default_cache_path(kept_dir: Path) -> Path:
-    """Default cache lives next to KEPT (so it travels with the project)."""
-    return kept_dir / ".imgcurate_cache.sqlite"
+    """Default cache lives next to KEPT (so it travels with the project).
+
+    Falls back to the pre-0.3.0 `.imgcurate_cache.sqlite` filename if that
+    file exists and the new one doesn't, so old caches keep working.
+    """
+    new = kept_dir / ".lsict_cache.sqlite"
+    legacy = kept_dir / ".imgcurate_cache.sqlite"
+    if not new.exists() and legacy.exists():
+        return legacy
+    return new

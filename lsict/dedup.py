@@ -22,8 +22,8 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from imgcurate.cache import Cache
-from imgcurate.core import (
+from lsict.cache import Cache
+from lsict.core import (
     file_sha256,
     image_sharpness,
     safe_open_pil,

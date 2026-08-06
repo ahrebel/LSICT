@@ -63,7 +63,7 @@ def run_seed(
         import pandas as pd
     except ImportError as e:
         raise RuntimeError(
-            "Seeding requires fiftyone + pandas. Install: pip install imgcurate[seed]"
+            "Seeding requires fiftyone + pandas. Install: pip install lsict[seed]"
         ) from e
 
     output_dir = output_dir.expanduser().resolve()
@@ -79,7 +79,7 @@ def run_seed(
     logger.info("Sampling %d categories, up to %d images each",
                 len(chosen), images_per_category)
 
-    dataset_name = f"imgcurate_seed_{random.randint(1_000_000, 9_999_999)}"
+    dataset_name = f"lsict_seed_{random.randint(1_000_000, 9_999_999)}"
     dataset = foz.load_zoo_dataset(
         "open-images-v7",
         split="train",
