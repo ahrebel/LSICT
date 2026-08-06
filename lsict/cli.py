@@ -93,9 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_unkept_args(pr)
     add_device_args(pr)
     add_cache_args(pr)
-    pr.add_argument("--face-backend", choices=["mediapipe", "haar", "auto", "off"],
+    pr.add_argument("--face-backend",
+                    choices=["mediapipe", "yunet", "haar", "auto", "off"],
                     default="auto",
-                    help="Face detector. 'auto' uses mediapipe if installed, else haar")
+                    help="Face detector. 'auto' tries mediapipe -> yunet -> haar "
+                         "(haar needs OpenCV 4; removed in OpenCV 5)")
     pr.add_argument("--yolo-conf", type=float, default=0.25,
                     help="YOLO person-confidence threshold")
     pr.add_argument("--yolo-batch", type=int, default=32, help="YOLO batch size")
@@ -133,7 +135,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help=argparse.SUPPRESS)  # unused, here so detect requires --cache-db OR uses one
     pd.add_argument("--cache-anchor", required=False, default=None,
                     help="Folder where the cache should live (default: alongside --unkept)")
-    pd.add_argument("--face-backend", choices=["mediapipe", "haar", "auto", "off"],
+    pd.add_argument("--face-backend",
+                    choices=["mediapipe", "yunet", "haar", "auto", "off"],
                     default="auto")
     pd.add_argument("--yolo-conf", type=float, default=0.25)
     pd.add_argument("--yolo-batch", type=int, default=32)

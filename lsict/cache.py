@@ -128,6 +128,14 @@ class Cache:
             return None
         return (bool(row[4]), bool(row[5]))
 
+    def get_person(self, path: Path) -> Optional[bool]:
+        """Person flag alone — may be set while the face flag is still pending
+        (detection results are cached incrementally)."""
+        row = self._row(path)
+        if row is None or row[4] is None:
+            return None
+        return bool(row[4])
+
     def get_nsfw_score(self, path: Path) -> Optional[float]:
         row = self._row(path)
         return row[6] if row and row[6] is not None else None
@@ -155,6 +163,15 @@ class Cache:
             "UPDATE file_meta SET phash_hex = ?, updated_at = strftime('%s','now') "
             "WHERE key = ?",
             (format(int(phash), "064x"), cache_key(path)),
+        )
+
+    def set_person(self, path: Path, has_person: bool) -> None:
+        """Persist the person flag alone (face check may come later)."""
+        self._ensure_base_row(path)
+        self.conn.execute(
+            "UPDATE file_meta SET has_person = ?, "
+            "updated_at = strftime('%s','now') WHERE key = ?",
+            (int(has_person), cache_key(path)),
         )
 
     def set_detection(self, path: Path, has_person: bool, has_face: bool) -> None:
