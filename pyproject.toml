@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lsict"
-version = "0.3.1"
+version = "0.3.2"
 description = "LSICT — large-scale image curation: dedup, people/face filter, NSFW screen, square-crop export, local web GUI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["gradio>=6.0"]
+gui = ["gradio>=6.0", "faiss-cpu>=1.7"]
 mediapipe = ["mediapipe>=0.10"]
 faiss = ["faiss-cpu>=1.7"]
 nsfw-classifier = ["transformers>=4.30", "accelerate>=0.20"]
