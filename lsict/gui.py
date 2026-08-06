@@ -2,15 +2,19 @@
 
 Serves on 127.0.0.1 only by default — images never leave the machine.
 Jobs run in a worker thread; log lines from the pipeline's loggers stream
-into the page while the job runs.
+into the page while the job runs, and the pipeline's tqdm progress bars
+are mirrored into an on-page progress bar.
 """
 from __future__ import annotations
 
 import csv
+import html as html_mod
 import logging
 import queue
 import threading
 from pathlib import Path
+
+import tqdm as _tqdm_module
 
 from lsict import __version__
 from lsict.core import is_image_file, normalize_path
@@ -70,6 +74,29 @@ CSS = """
     color: var(--body-text-color-subdued);
 }
 
+/* ---- job progress bar ---- */
+.prog { margin: 0 0 8px; }
+.prog-label {
+    font-size: 0.82rem; font-weight: 600; margin-bottom: 5px;
+    color: var(--body-text-color); font-variant-numeric: tabular-nums;
+}
+.prog-track {
+    height: 8px; border-radius: 999px; overflow: hidden;
+    background: rgba(100, 116, 139, 0.22);
+}
+.prog-fill {
+    height: 100%; border-radius: 999px; background: #6366f1;
+    transition: width 0.4s ease;
+}
+.prog-indeterminate {
+    width: 30% !important;
+    animation: prog-slide 1.2s ease-in-out infinite alternate;
+}
+@keyframes prog-slide {
+    from { margin-left: 0; }
+    to   { margin-left: 70%; }
+}
+
 /* ---- console-style log ---- */
 .log-box textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
@@ -108,13 +135,74 @@ class _QueueLogHandler(logging.Handler):
 _job_lock = threading.Lock()
 
 
-def _stream_job(fn, *args, **kwargs):
-    """Run fn(*args, **kwargs) in a thread; yield (log_text, summary) tuples.
+class _TqdmHook:
+    """Mirror the most recently updated tqdm bar's state while active.
 
-    summary is None until the job finishes. Only one job runs at a time.
+    The pipeline modules use tqdm for every stage; patching update/close on
+    the tqdm class lets the GUI show the same progress without touching them.
+    """
+
+    def __init__(self):
+        self.desc = ""
+        self.n = 0
+        self.total: int | None = None
+        self._orig_update = None
+        self._orig_close = None
+
+    def _capture(self, bar) -> None:
+        self.desc = bar.desc or ""
+        self.n = int(bar.n)
+        self.total = int(bar.total) if bar.total else None
+
+    def __enter__(self) -> "_TqdmHook":
+        hook = self
+        cls = _tqdm_module.tqdm
+        self._orig_update = cls.update
+        self._orig_close = cls.close
+
+        def update(bar, n=1):
+            res = hook._orig_update(bar, n)
+            hook._capture(bar)
+            return res
+
+        def close(bar):
+            hook._capture(bar)
+            return hook._orig_close(bar)
+
+        cls.update = update
+        cls.close = close
+        return self
+
+    def __exit__(self, *exc) -> None:
+        cls = _tqdm_module.tqdm
+        cls.update = self._orig_update
+        cls.close = self._orig_close
+
+    def as_html(self) -> str:
+        if not self.desc and not self.n:
+            return ""
+        desc = html_mod.escape(self.desc) or "Working"
+        if self.total:
+            pct = min(100.0, 100.0 * self.n / self.total)
+            label = f"{desc} — {self.n:,} / {self.total:,} ({pct:.0f}%)"
+            fill = f'<div class="prog-fill" style="width:{pct:.1f}%"></div>'
+        else:
+            label = f"{desc} — {self.n:,}"
+            fill = '<div class="prog-fill prog-indeterminate"></div>'
+        return (
+            f'<div class="prog"><div class="prog-label">{label}</div>'
+            f'<div class="prog-track">{fill}</div></div>'
+        )
+
+
+def _stream_job(fn, *args, **kwargs):
+    """Run fn(*args, **kwargs) in a thread.
+
+    Yields (log_text, progress_html, summary) tuples; summary is None until
+    the job finishes. Only one job runs at a time.
     """
     if not _job_lock.acquire(blocking=False):
-        yield "Another job is already running — wait for it to finish.", None
+        yield "Another job is already running — wait for it to finish.", "", None
         return
 
     q: queue.Queue = queue.Queue()
@@ -133,35 +221,35 @@ def _stream_job(fn, *args, **kwargs):
         except BaseException as e:  # surface everything in the UI
             error.append(e)
 
-    t = threading.Thread(target=target, daemon=True)
-    t.start()
-
     lines: list[str] = []
     try:
-        while True:
-            drained = False
-            try:
-                while True:
-                    lines.append(q.get_nowait())
-                    drained = True
-            except queue.Empty:
-                pass
-            if len(lines) > MAX_LOG_LINES:
-                lines = lines[-MAX_LOG_LINES:]
-            if not t.is_alive() and not drained:
-                break
-            yield "\n".join(lines), None
-            t.join(timeout=0.5)
+        with _TqdmHook() as hook:
+            t = threading.Thread(target=target, daemon=True)
+            t.start()
+            while True:
+                drained = False
+                try:
+                    while True:
+                        lines.append(q.get_nowait())
+                        drained = True
+                except queue.Empty:
+                    pass
+                if len(lines) > MAX_LOG_LINES:
+                    lines = lines[-MAX_LOG_LINES:]
+                if not t.is_alive() and not drained:
+                    break
+                yield "\n".join(lines), hook.as_html(), None
+                t.join(timeout=0.5)
     finally:
         root.removeHandler(handler)
         _job_lock.release()
 
     if error:
         lines.append(f"ERROR: {error[0]}")
-        yield "\n".join(lines), {"error": str(error[0])}
+        yield "\n".join(lines), "", {"error": str(error[0])}
     else:
         lines.append("Done.")
-        yield "\n".join(lines), result.get("summary")
+        yield "\n".join(lines), "", result.get("summary")
 
 
 # ---------- tab callbacks ----------
@@ -176,10 +264,10 @@ def _curate_job(inputs_text, kept, unkept, copy_instead,
                 kept_side, jpeg_quality, clean_kept, no_cache):
     input_dirs = _parse_dirs(inputs_text)
     if not input_dirs:
-        yield "Add at least one input folder (one per line).", None
+        yield "Add at least one input folder (one per line).", "", None
         return
     if not (kept or "").strip() or not (unkept or "").strip():
-        yield "Both a Kept folder and an Unkept folder are required.", None
+        yield "Both a Kept folder and an Unkept folder are required.", "", None
         return
     yield from _stream_job(
         run_full_pipeline,
@@ -204,7 +292,7 @@ def _curate_job(inputs_text, kept, unkept, copy_instead,
 
 def _nsfw_job(src, dst, backend, threshold, copy, device, batch):
     if not (src or "").strip() or not (dst or "").strip():
-        yield "Both a source folder and a destination folder are required.", None
+        yield "Both a source folder and a destination folder are required.", "", None
         return
     yield from _stream_job(
         run_nsfw_screen,
@@ -374,6 +462,7 @@ def build_ui():
                     run_btn = gr.Button("Run pipeline", variant="primary",
                                         size="lg", elem_classes=["action-btn"])
                 with gr.Column(scale=1):
+                    run_progress = gr.HTML()
                     run_log = gr.Textbox(
                         label="Log", lines=22, interactive=False,
                         elem_classes=["log-box"],
@@ -385,7 +474,7 @@ def build_ui():
                         device, face_backend, use_faiss, skip_detect,
                         similarity, phash_hamming, yolo_conf, rep_policy,
                         kept_side, jpeg_quality, clean_kept, no_cache],
-                outputs=[run_log, run_summary],
+                outputs=[run_log, run_progress, run_summary],
             )
 
         # ----- NSFW screen -----
@@ -417,6 +506,7 @@ def build_ui():
                     nsfw_btn = gr.Button("Screen", variant="primary",
                                          size="lg", elem_classes=["action-btn"])
                 with gr.Column(scale=1):
+                    nsfw_progress = gr.HTML()
                     nsfw_log = gr.Textbox(
                         label="Log", lines=16, interactive=False,
                         elem_classes=["log-box"],
@@ -426,7 +516,7 @@ def build_ui():
                 _nsfw_job,
                 inputs=[nsfw_src, nsfw_dst, nsfw_backend, nsfw_threshold,
                         nsfw_copy, nsfw_device, nsfw_batch],
-                outputs=[nsfw_log, nsfw_summary],
+                outputs=[nsfw_log, nsfw_progress, nsfw_summary],
             )
 
         # ----- Review -----

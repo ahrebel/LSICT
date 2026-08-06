@@ -17,29 +17,74 @@ Rejected files aren't deleted — they're mirrored to an `Unkept` folder, and ev
 
 ## Install
 
-Python 3.10–3.12.
+One command installs everything — Python (if you don't have it), all dependencies, and the `lsict` app. You don't need Python, git, or anything else pre-installed.
 
-### On any device (one command)
+**Step 1 — open a terminal and paste the line for your OS:**
 
-```bash
-pip install "lsict[gui] @ git+https://github.com/ahrebel/LSICT@main"
-```
-
-That's it — this pulls LSICT straight from this repo, downloads every dependency, and puts the `lsict` command on your PATH. Then run `lsict gui`.
-
-Prefer an isolated install that can't conflict with anything else on the machine? Use [pipx](https://pipx.pypa.io) or [uv](https://docs.astral.sh/uv/) instead of pip:
+macOS / Linux:
 
 ```bash
-uv tool install "lsict[gui] @ git+https://github.com/ahrebel/LSICT@main"
+curl -LsSf https://raw.githubusercontent.com/ahrebel/LSICT/main/install.sh | sh
 ```
 
-(uv will even download a suitable Python if the machine doesn't have one.)
+Windows (PowerShell):
 
-Heads-up: the dependencies include PyTorch (~2 GB), so the first install takes a while. Model weights (YOLOv8n, CLIP, etc.) download automatically on first *use*, not at install.
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ahrebel/LSICT/main/install.ps1 | iex"
+```
 
-### Optional extras
+The dependencies are ~2 GB (mostly PyTorch), so the first install takes a few minutes.
 
-Add extras inside the brackets, comma-separated — e.g. `"lsict[gui,faiss] @ git+..."`:
+**Step 2 — open a NEW terminal window** (so the just-installed command is found) **and run:**
+
+```bash
+lsict gui
+```
+
+The app opens in your browser. That's it.
+
+- To **upgrade** later, just re-run the Step 1 command.
+- Model weights (YOLO, CLIP, …) download automatically the first time you run a job, not at install.
+
+<details>
+<summary><strong>Prefer to run the steps yourself? Manual install with uv or pip</strong></summary>
+
+The install script above just automates these steps — here they are by hand.
+
+**Step 1 — install [uv](https://docs.astral.sh/uv/)** (skip if you already have it):
+
+macOS / Linux:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Step 2 — open a new terminal, then install LSICT with uv** (uv downloads a suitable Python automatically if the machine doesn't have one):
+
+```bash
+uv tool install --python 3.12 "lsict[gui] @ https://github.com/ahrebel/LSICT/archive/refs/heads/main.tar.gz"
+```
+
+**Step 3 — run it:**
+
+```bash
+lsict gui
+```
+
+Alternatively, if you already have Python 3.10–3.12 and prefer plain pip (no uv involved):
+
+```bash
+pip install "lsict[gui] @ https://github.com/ahrebel/LSICT/archive/refs/heads/main.tar.gz"
+lsict gui
+```
+
+Optional extras — add them inside the brackets, comma-separated (e.g. `lsict[gui,faiss]`):
 
 | Extra             | What it adds                          |
 | ----------------- | ------------------------------------- |
@@ -50,12 +95,32 @@ Add extras inside the brackets, comma-separated — e.g. `"lsict[gui,faiss] @ gi
 | `seed`            | Open Images seeding                   |
 | `all`             | everything above                      |
 
-### From a local clone (development)
+For development, work from a clone:
 
 ```bash
 git clone https://github.com/ahrebel/LSICT && cd LSICT
 pip install -e ".[gui]"
 ```
+
+</details>
+
+### Try it without installing anything (no trace)
+
+Want to run LSICT once and leave **nothing** on the machine? This variant downloads everything — including Python and the model weights — into a single temporary folder, runs the app, and **deletes the whole folder when you stop the app or close the terminal**:
+
+macOS / Linux:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/ahrebel/LSICT/main/run-once.sh | sh
+```
+
+Windows (PowerShell) — stop with **Ctrl+C** so the cleanup runs:
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ahrebel/LSICT/main/run-once.ps1 | iex"
+```
+
+Trade-off: because nothing is kept, **every launch re-downloads the ~2 GB of dependencies**. Use the regular install above if you'll run LSICT more than once. (Your image folders and exports are of course never deleted — only the temporary program folder is.)
 
 ---
 
@@ -65,9 +130,9 @@ pip install -e ".[gui]"
 lsict gui
 ```
 
-Opens LSICT in your browser at `http://127.0.0.1:7860` (local only — your images never leave the machine). Three tabs:
+This starts the app and **automatically opens it in your default web browser** at `http://127.0.0.1:7860` (local only — your images never leave the machine; use `--no-browser` if you don't want the auto-open). Three tabs:
 
-- **Curate** — point it at your input folder(s), choose Kept/Unkept folders, hit *Run pipeline*. Live log while it works, summary when it's done. Advanced settings (similarity, detectors, export size, …) are in a collapsible panel.
+- **Curate** — point it at your input folder(s), choose Kept/Unkept folders, hit *Run pipeline*. A **live progress bar** shows the current stage and how far along it is (e.g. *YOLO person — 422/1,200*), with the full log streaming below it and a summary when it's done. Advanced settings (similarity, detectors, export size, …) are in a collapsible panel.
 - **NSFW screen** — copy/move only SAFE-classified images from one folder to another.
 - **Review** — side-by-side galleries: what was kept, and what was rejected **with the reason** (person / face / exact duplicate / near duplicate). This is the manual check the disclaimer above is about.
 
