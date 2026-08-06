@@ -109,6 +109,18 @@ def run_full_pipeline(
 
     Returns a summary dict (same shape the CLI prints as JSON).
     """
+    # Preflight optional dependencies BEFORE any long stage runs, so a
+    # missing package fails in a second instead of mid-pipeline.
+    if use_faiss:
+        try:
+            import faiss  # noqa: F401
+        except ImportError:
+            raise ValueError(
+                "FAISS was requested but faiss is not installed. Either "
+                "install it (pip install faiss-cpu) or turn the FAISS "
+                "option off — the pHash method works fine below ~50k images."
+            )
+
     all_imgs, roots_map = collect_inputs(input_dirs)
     if not all_imgs:
         logger.warning("No images to process.")

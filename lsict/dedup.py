@@ -18,7 +18,6 @@ from typing import Optional
 
 import imagehash
 import numpy as np
-import torch
 from PIL import Image
 from tqdm import tqdm
 
@@ -104,6 +103,8 @@ def embed_images(
 
     Cached embeddings are reused; only uncached files run through CLIP.
     """
+    import torch
+
     # 1) Load cached, find missing
     cached: dict[int, np.ndarray] = {}
     missing_idx: list[int] = []
@@ -201,15 +202,21 @@ def find_exact_duplicates(
             "SHA-256: %d cached, %d to compute",
             len(files) - len(need_compute), len(need_compute),
         )
-        with cache.transaction():
-            for p in tqdm(need_compute, desc="SHA-256", unit="file"):
-                try:
-                    sha = file_sha256(p)
-                except OSError as e:
-                    logger.warning("Can't hash %s: %s", p, e)
-                    continue
-                cache.set_sha256(p, sha)
-                by_sha.setdefault(sha, []).append(p)
+        # Commit in chunks so an interrupted run keeps its progress.
+        chunk_size = 512
+        pbar = tqdm(total=len(need_compute), desc="SHA-256", unit="file")
+        for i in range(0, len(need_compute), chunk_size):
+            with cache.transaction():
+                for p in need_compute[i:i + chunk_size]:
+                    try:
+                        sha = file_sha256(p)
+                    except OSError as e:
+                        logger.warning("Can't hash %s: %s", p, e)
+                        continue
+                    cache.set_sha256(p, sha)
+                    by_sha.setdefault(sha, []).append(p)
+            pbar.update(min(chunk_size, len(need_compute) - i))
+        pbar.close()
 
     return {sha: ps for sha, ps in by_sha.items() if len(ps) > 1}
 
@@ -244,12 +251,18 @@ def find_near_duplicates_phash(
             "pHash: %d cached, %d to compute",
             len(files) - len(need_compute), len(need_compute),
         )
-        with cache.transaction():
-            for p in tqdm(need_compute, desc="pHash", unit="file"):
-                h = compute_phash(p)
-                if h is not None:
-                    cache.set_phash(p, h)
-                    phashes[p] = h
+        # Commit in chunks so an interrupted run keeps its progress.
+        chunk_size = 256
+        pbar = tqdm(total=len(need_compute), desc="pHash", unit="file")
+        for i in range(0, len(need_compute), chunk_size):
+            with cache.transaction():
+                for p in need_compute[i:i + chunk_size]:
+                    h = compute_phash(p)
+                    if h is not None:
+                        cache.set_phash(p, h)
+                        phashes[p] = h
+            pbar.update(min(chunk_size, len(need_compute) - i))
+        pbar.close()
 
     # 2) Bucket by top 32 bits to keep pair scan tractable
     buckets: dict[int, list[tuple[Path, int]]] = {}

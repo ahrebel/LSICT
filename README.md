@@ -88,7 +88,7 @@ Optional extras — add them inside the brackets, comma-separated (e.g. `lsict[g
 
 | Extra             | What it adds                          |
 | ----------------- | ------------------------------------- |
-| `gui`             | the browser app (`lsict gui`)         |
+| `gui`             | the browser app (`lsict gui`) + FAISS |
 | `mediapipe`       | better face detection                 |
 | `faiss`           | fast near-dup search for big sets     |
 | `nsfw-classifier` | pretrained NSFW model (recommended)   |

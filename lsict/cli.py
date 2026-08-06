@@ -303,6 +303,12 @@ def cmd_detect(args) -> int:
 
 
 def cmd_dedup(args) -> int:
+    if args.use_faiss:
+        try:
+            import faiss  # noqa: F401
+        except ImportError:
+            logging.error("--use-faiss requires faiss (pip install faiss-cpu)")
+            return 2
     all_imgs, roots_map = _collect_inputs(args.input)
     if not all_imgs:
         return 0
