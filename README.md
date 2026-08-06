@@ -225,4 +225,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## AI use
 
-Some parts of this code and these docs were drafted with help from AI tools. A human set the goals, reviewed output, and tested at 250k-image scale.
+Some parts of this code and these docs were drafted with help from AI tools.
