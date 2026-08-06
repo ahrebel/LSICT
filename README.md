@@ -19,21 +19,43 @@ Rejected files aren't deleted — they're mirrored to an `Unkept` folder, and ev
 
 Python 3.10–3.12.
 
+### On any device (one command)
+
 ```bash
+pip install "lsict[gui] @ git+https://github.com/ahrebel/LSICT@main"
+```
+
+That's it — this pulls LSICT straight from this repo, downloads every dependency, and puts the `lsict` command on your PATH. Then run `lsict gui`.
+
+Prefer an isolated install that can't conflict with anything else on the machine? Use [pipx](https://pipx.pypa.io) or [uv](https://docs.astral.sh/uv/) instead of pip:
+
+```bash
+uv tool install "lsict[gui] @ git+https://github.com/ahrebel/LSICT@main"
+```
+
+(uv will even download a suitable Python if the machine doesn't have one.)
+
+Heads-up: the dependencies include PyTorch (~2 GB), so the first install takes a while. Model weights (YOLOv8n, CLIP, etc.) download automatically on first *use*, not at install.
+
+### Optional extras
+
+Add extras inside the brackets, comma-separated — e.g. `"lsict[gui,faiss] @ git+..."`:
+
+| Extra             | What it adds                          |
+| ----------------- | ------------------------------------- |
+| `gui`             | the browser app (`lsict gui`)         |
+| `mediapipe`       | better face detection                 |
+| `faiss`           | fast near-dup search for big sets     |
+| `nsfw-classifier` | pretrained NSFW model (recommended)   |
+| `seed`            | Open Images seeding                   |
+| `all`             | everything above                      |
+
+### From a local clone (development)
+
+```bash
+git clone https://github.com/ahrebel/LSICT && cd LSICT
 pip install -e ".[gui]"
 ```
-
-Optional extras:
-
-```bash
-pip install -e ".[mediapipe]"        # better face detection
-pip install -e ".[faiss]"            # fast near-dup search for big sets
-pip install -e ".[nsfw-classifier]"  # pretrained NSFW model (recommended)
-pip install -e ".[seed]"             # Open Images seeding
-pip install -e ".[all]"              # everything
-```
-
-Model weights (YOLOv8n, CLIP, etc.) download automatically on first use.
 
 ---
 
