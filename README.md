@@ -212,3 +212,6 @@ MIT — see [LICENSE](LICENSE).
 ## AI use
 
 Some parts of this code and these docs were drafted with help from AI tools.
+
+> **⚠️ No guarantees — always check the results by hand.**
+> Filtering relies on machine-learning models (person/face detection, NSFW classification, similarity matching), and none of them are perfect: they will occasionally miss people, faces, duplicates, or unsafe content. If your image set is destined for sensitive work, treat LSICT as a first pass and **manually review the final set before using it** — the GUI's Review tab exists for exactly that.
