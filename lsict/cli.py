@@ -123,6 +123,13 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Don't wipe existing JPEGs in KEPT before export")
     pr.add_argument("--skip-detect", action="store_true",
                     help="Skip people/face detection (e.g., when resuming)")
+    pr.add_argument("--min-sharpness", type=float, default=0.0,
+                    help="Reject blurry images: variance-of-Laplacian below "
+                         "this is rejected (0 = off; try 100)")
+    pr.add_argument("--drop-grayscale", action="store_true",
+                    help="Reject black & white / grayscale images")
+    pr.add_argument("--drop-bordered", action="store_true",
+                    help="Reject images with solid borders or letterboxing")
     pr.set_defaults(func=cmd_run)
 
     # detect
@@ -260,6 +267,9 @@ def cmd_run(args) -> int:
             jpeg_quality=args.jpeg_quality,
             clean_kept=not args.no_clean_kept,
             skip_detect=args.skip_detect,
+            min_sharpness=args.min_sharpness,
+            drop_grayscale=args.drop_grayscale,
+            drop_bordered=args.drop_bordered,
             cache_db=args.cache_db,
             no_cache=args.no_cache,
         )

@@ -102,6 +102,9 @@ def run_full_pipeline(
     jpeg_quality: int = 92,
     clean_kept: bool = True,
     skip_detect: bool = False,
+    min_sharpness: float = 0.0,
+    drop_grayscale: bool = False,
+    drop_bordered: bool = False,
     cache_db: Optional[str] = None,
     no_cache: bool = False,
 ) -> dict:
@@ -140,11 +143,28 @@ def run_full_pipeline(
         rejected: set[Path] = set()
         outcomes: dict[Path, str] = {}
 
+        # ----- Stage 0: quality filter (blur / grayscale / borders) -----
+        # Runs first: it's far cheaper than YOLO, so pruning here saves work.
+        if min_sharpness > 0 or drop_grayscale or drop_bordered:
+            from lsict.quality import run_quality_filter
+            qrej = run_quality_filter(
+                all_imgs, cache,
+                min_sharpness=min_sharpness,
+                drop_grayscale=drop_grayscale,
+                drop_bordered=drop_bordered,
+            )
+            for p, reason in qrej.items():
+                mirror_to_unkept(p, roots_map[p], unkept_dir,
+                                 copy_instead, overwrite_unkept)
+                rejected.add(p)
+                outcomes[p] = reason
+            logger.info("Quality filter rejected %d image(s).", len(qrej))
+
         # ----- Stage 1: detect -----
         if not skip_detect:
             from lsict.detect import run_detection
             det = run_detection(
-                files=all_imgs,
+                files=[p for p in all_imgs if p not in rejected],
                 cache=cache,
                 device=device,
                 face_backend=face_backend,
@@ -232,6 +252,9 @@ def run_full_pipeline(
 
         return {
             "total_input": len(all_imgs),
+            "rejected_blurry": sum(1 for v in outcomes.values() if v == "blurry"),
+            "rejected_grayscale": sum(1 for v in outcomes.values() if v == "grayscale"),
+            "rejected_bordered": sum(1 for v in outcomes.values() if v == "bordered"),
             "rejected_person": sum(1 for v in outcomes.values() if v == "person"),
             "rejected_face": sum(1 for v in outcomes.values() if v == "face"),
             "rejected_exact_dup": sum(1 for v in outcomes.values() if v == "duplicate_exact"),

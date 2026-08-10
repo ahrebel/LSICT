@@ -48,6 +48,7 @@ class Cache:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(db_path))
         self.conn.executescript(SCHEMA)
+        self._migrate()
         # WAL gives better concurrent-read performance; synchronous=NORMAL is
         # a reasonable durability/perf trade-off for a cache.
         self.conn.execute("PRAGMA journal_mode = WAL")
@@ -66,12 +67,21 @@ class Cache:
 
     # ---------- internal ----------
 
+    def _migrate(self) -> None:
+        """Add columns introduced after 0.3.x to existing databases."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(file_meta)")}
+        for name in ("sharpness", "saturation", "border_frac"):
+            if name not in cols:
+                self.conn.execute(f"ALTER TABLE file_meta ADD COLUMN {name} REAL")
+        self.conn.commit()
+
     def _row(self, path: Path) -> Optional[sqlite3.Row]:
         """Return the cache row if it exists AND is still valid for this file."""
         key = cache_key(path)
         cur = self.conn.execute(
             "SELECT size, mtime, sha256, phash_hex, has_person, has_face, "
-            "nsfw_score, clip_dim, clip_emb FROM file_meta WHERE key = ?",
+            "nsfw_score, clip_dim, clip_emb, sharpness, saturation, "
+            "border_frac FROM file_meta WHERE key = ?",
             (key,),
         )
         row = cur.fetchone()
@@ -147,6 +157,13 @@ class Cache:
         dim, blob = row[7], row[8]
         return np.frombuffer(blob, dtype=np.float32).copy().reshape(dim)
 
+    def get_quality(self, path: Path) -> Optional[tuple[float, float, float]]:
+        """(sharpness, saturation, border_frac) or None if not yet computed."""
+        row = self._row(path)
+        if row is None or row[9] is None or row[10] is None or row[11] is None:
+            return None
+        return (float(row[9]), float(row[10]), float(row[11]))
+
     # ---------- public setters (batched-friendly) ----------
 
     def set_sha256(self, path: Path, sha: str) -> None:
@@ -188,6 +205,16 @@ class Cache:
             "UPDATE file_meta SET nsfw_score = ?, updated_at = strftime('%s','now') "
             "WHERE key = ?",
             (float(score), cache_key(path)),
+        )
+
+    def set_quality(self, path: Path, sharpness: float, saturation: float,
+                    border_frac: float) -> None:
+        self._ensure_base_row(path)
+        self.conn.execute(
+            "UPDATE file_meta SET sharpness = ?, saturation = ?, "
+            "border_frac = ?, updated_at = strftime('%s','now') WHERE key = ?",
+            (float(sharpness), float(saturation), float(border_frac),
+             cache_key(path)),
         )
 
     def set_clip(self, path: Path, emb: np.ndarray) -> None:

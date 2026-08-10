@@ -3,6 +3,7 @@
 A cross-platform (macOS / Windows / Linux) app for turning very large image folders into clean image sets. Use it from the **browser GUI** or the command line. It can:
 
 - filter out images containing **people or faces**,
+- filter out **blurry**, **black & white**, and **bordered/letterboxed** images (optional),
 - remove **exact and near-duplicates**,
 - export the survivors as center-cropped **300×300 JPEGs** named `1.jpg`, `2.jpg`, …,
 - screen for **NSFW** content and keep only safe images,
@@ -134,7 +135,7 @@ This starts the app and **automatically opens it in your default web browser** a
 
 - **Curate** — point it at your input folder(s), choose Kept/Unkept folders, hit *Run pipeline*. A **live progress bar** shows the current stage and how far along it is (e.g. *YOLO person — 422/1,200*), with the full log streaming below it and a summary when it's done. Advanced settings (similarity, detectors, export size, …) are in a collapsible panel.
 - **NSFW screen** — copy/move only SAFE-classified images from one folder to another.
-- **Review** — side-by-side galleries: what was kept, and what was rejected **with the reason** (person / face / exact duplicate / near duplicate). This is the manual check the disclaimer above is about.
+- **Review** — side-by-side galleries: what was kept, and what was rejected **with the reason** (person / face / blurry / grayscale / bordered / exact duplicate / near duplicate). This is the manual check the disclaimer above is about.
 
 `lsict gui --port 8000` to change the port, `--no-browser` to not auto-open a tab.
 
@@ -182,6 +183,9 @@ Every subcommand supports `--help` for its full options.
 - `--rep-policy` (default `sharpest`) — which image to keep from a duplicate group: `sharpest`, `largest`, `newest`, `oldest`, or `first`.
 - `--yolo-conf` (default 0.25) — person-detection confidence. Lower flags more aggressively.
 - `--face-backend` (default `auto`) — face detector: `mediapipe`, `yunet`, or `haar`. `auto` uses the best one available (Haar requires OpenCV 4; it was removed in OpenCV 5).
+- `--min-sharpness` (default 0 = off) — reject blurry images. Sharpness is variance-of-Laplacian at a normalized resolution; try 100 and check the Review tab. (Not the same as `--jpeg-quality`, which is just the file compression of the exported JPEGs.)
+- `--drop-grayscale` — reject black & white images (low color saturation, even when saved as RGB).
+- `--drop-bordered` — reject images with solid borders or letterboxing. Heads-up: photos with genuinely plain edges (product shots on white, big flat skies) can trigger this too — review before trusting it.
 - `--device` — `auto` (default), `cuda`, `mps`, or `cpu`.
 
 ---
