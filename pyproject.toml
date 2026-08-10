@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lsict"
-version = "0.3.2"
+version = "0.3.3"
 description = "LSICT — large-scale image curation: dedup, people/face filter, NSFW screen, square-crop export, local web GUI"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,2 +1,2 @@
 """LSICT — large-scale image curation toolkit (cross-platform)."""
-__version__ = "0.3.2"
+__version__ = "0.3.3"

@@ -259,6 +259,7 @@ def _parse_dirs(text: str) -> list[str]:
 
 
 def _curate_job(inputs_text, kept, unkept, copy_instead,
+                drop_grayscale, drop_bordered, min_sharpness,
                 device, face_backend, use_faiss, skip_detect,
                 similarity, phash_hamming, yolo_conf, rep_policy,
                 kept_side, jpeg_quality, clean_kept, no_cache):
@@ -275,6 +276,9 @@ def _curate_job(inputs_text, kept, unkept, copy_instead,
         kept.strip(),
         unkept.strip(),
         copy_instead=bool(copy_instead),
+        drop_grayscale=bool(drop_grayscale),
+        drop_bordered=bool(drop_bordered),
+        min_sharpness=float(min_sharpness),
         device=device,
         face_backend=face_backend,
         use_faiss=bool(use_faiss),
@@ -429,6 +433,16 @@ def build_ui():
                         )
                         use_faiss = gr.Checkbox(
                             value=False, label="Use FAISS (faster on >50k images)")
+                        drop_grayscale = gr.Checkbox(
+                            value=False, label="Drop black & white images")
+                        drop_bordered = gr.Checkbox(
+                            value=False,
+                            label="Drop images with solid borders / letterboxing")
+                        min_sharpness = gr.Slider(
+                            0, 300, value=0, step=5,
+                            label="Minimum sharpness (0 = keep all)",
+                            info="Rejects blurry images; try 100 as a start "
+                                 "and check the Review tab")
                     with gr.Accordion("Advanced", open=False):
                         device = gr.Dropdown(
                             ["auto", "cuda", "mps", "cpu"], value="auto",
@@ -450,8 +464,11 @@ def build_ui():
                             value="sharpest", label="Keep which duplicate")
                         kept_side = gr.Number(value=300, precision=0,
                                               label="Export size (px)")
-                        jpeg_quality = gr.Slider(50, 100, value=92, step=1,
-                                                 label="JPEG quality")
+                        jpeg_quality = gr.Slider(
+                            50, 100, value=92, step=1,
+                            label="Export JPEG quality",
+                            info="File compression of the exported JPEGs — "
+                                 "not a blur filter")
                         skip_detect = gr.Checkbox(
                             value=False, label="Skip people/face detection")
                         clean_kept = gr.Checkbox(
@@ -471,6 +488,7 @@ def build_ui():
             run_btn.click(
                 _curate_job,
                 inputs=[inputs_text, kept, unkept, copy_instead,
+                        drop_grayscale, drop_bordered, min_sharpness,
                         device, face_backend, use_faiss, skip_detect,
                         similarity, phash_hamming, yolo_conf, rep_policy,
                         kept_side, jpeg_quality, clean_kept, no_cache],
